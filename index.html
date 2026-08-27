@@ -417,6 +417,7 @@ footer b{color:var(--ink-2)}
         <button data-act="csv">导出明细 CSV</button>
         <button data-act="png">导出整屏 PNG 快照</button>
         <button data-act="pdf">打印 / 导出 PDF</button>
+        <button data-act="datajs" title="把当前看板（含导入数据）导出为 data.js，发给我即可同步到共享链接">导出 data.js（同步共享）</button>
       </div>
     </div>
     <button class="btn btn-ghost" id="tplBtn">⬇ 模板</button>
@@ -1059,6 +1060,35 @@ function exportPNG(){
     }).catch(err=>toast('PNG 生成失败：'+err.message));
 }
 
+/* ============ export data.js（把导入/调整后的看板回写为可同步的 data.js） ============ */
+function exportDataJS(){
+  // 序列化当前内存中的 PROVINCES（含浏览器导入后的增量）回 window.DASHBOARD_DATA 结构
+  const meta = Object.assign({}, ND.meta || {});
+  meta.generated = new Date().toLocaleString('zh-CN', {hour12:false});
+  meta.exportedAt = Date.now();
+  meta.provinces = Object.keys(PROVINCES);
+  const out = { meta, provinces: {} };
+  for(const k in PROVINCES){
+    const b = PROVINCES[k];
+    out.provinces[k] = {
+      name: b.name || k,
+      aggregate: b.aggregate || '全省',
+      scopes: b.scopes || [],
+      records: b.records || [],
+      hourly: b.hourly || {}
+    };
+  }
+  const js = 'window.DASHBOARD_DATA = ' + JSON.stringify(out, null, 2) + ';\n';
+  const blob = new Blob([js], {type:'application/javascript;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'data.js';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  const nRec = Object.values(PROVINCES).reduce((s,p)=>s+(p.records?p.records.length:0),0);
+  toast('已导出 data.js · '+Object.keys(PROVINCES).length+' 省份 / '+nRec+' 条记录');
+}
+
 /* ============ refresh ============ */
 function refresh(){
   renderHero(); renderKPIs(); renderPrice(); renderComp(); renderCity(); renderTable();
@@ -1305,6 +1335,7 @@ expMenu.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   if(act==='csv') exportCSV();
   else if(act==='png') exportPNG();
   else if(act==='pdf') window.print();
+  else if(act==='datajs') exportDataJS();
 });
 
 /* ============ template (month-picker -> xlsx) ============ */
