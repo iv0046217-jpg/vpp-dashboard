@@ -679,19 +679,36 @@ function dailySeries(recs,key){
     if(key==='up')return r.K?r.U/r.K:0; if(key==='rp')return r.K?r.V/r.K:0; return r.K?r.W/r.K:0;
   });
 }
-/* 月度聚合：把日记录按月份汇总（K/U/V/W 求和；L/M 按发电量 K 加权，避免简单平均失真） */
+/* 月度聚合：把日记录按月份汇总（K/U/V/W 求和；L/M 走 HOURLY 按 K>0 真实上网时刻 K 加权；
+   分母用同一基准 Kw=HOURLY K>0 时段的 K 之和，避免 RECORDS 含 hourly 缺失日导致分母虚高、价格被稀释 */
 function monthlySeries(){
   const recs=scopeRecords();
   const by={};
   for(const r of recs){
-    if(!by[r.month]) by[r.month]={month:r.month,K:0,U:0,V:0,W:0,Lw:0,Mw:0};
+    if(!by[r.month]) by[r.month]={month:r.month,K:0,U:0,V:0,W:0,Lw:0,Mw:0,Kw:0};
     const a=by[r.month];
-    a.K+=r.K; a.U+=r.U; a.V+=r.V; a.W+=r.W; a.Lw+=r.L*r.K; a.Mw+=r.M*r.K;
+    a.K+=r.K; a.U+=r.U; a.V+=r.V; a.W+=r.W;
+  }
+  // L/M 走 HOURLY 按 K>0 时段加权（__all 时聚合各城市；单城市走 HOURLY[city]）
+  const cities=(state.city==='__all'||state.city===AGG)
+    ? Object.keys(HOURLY).filter(c=>c!==AGG&&c!=='__all'&&c!=='全区')
+    : [state.city];
+  for(const c of cities){
+    const cityH=HOURLY[c]; if(!cityH) continue;
+    for(const dateKey in cityH){
+      const m=+dateKey.substring(5,7); const bucket=by[m]; if(!bucket) continue;
+      const arr=cityH[dateKey]; if(!arr) continue;
+      for(const slot of arr){
+        if(!slot) continue;
+        const L=slot[0],M=slot[1],K=slot[2];
+        if(K>0){ bucket.Lw+=L*K; bucket.Mw+=M*K; bucket.Kw+=K; }
+      }
+    }
   }
   return Object.values(by).map(a=>({
     month:a.month,K:a.K,U:a.U,V:a.V,W:a.W,
     up:a.K?a.U/a.K:0, rp:a.K?a.V/a.K:0, im:a.K?a.W/a.K:0,
-    L:a.K?a.Lw/a.K:0, M:a.K?a.Mw/a.K:0
+    L:a.Kw?a.Lw/a.Kw:0, M:a.Kw?a.Mw/a.Kw:0
   })).sort((x,y)=>x.month-y.month);
 }
 
