@@ -1241,7 +1241,13 @@ function normDate(d){
   let s=String(d).replace(/\//g,'-').trim();
   if(/^\d{4,5}$/.test(s)){ const dt=new Date((+s-25569)*864e5); return dt.toISOString().slice(0,10); }
   const p=s.split('-');
-  if(p.length===3){ const[y,m,dd]=p; return `${y}-${String(m).padStart(2,'0')}-${String(dd).padStart(2,'0')}`; }
+  if(p.length===3){
+    const[y,m,dd]=p;
+    if(y.length===4) return `${y}-${String(m).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+    /* Excel/CSV 自动识别日期会把 2026-07-01 转成本地 m/d/yy，这里归一化回 Y-M-D */
+    if(+y>=1&&+y<=12&&+m>=1&&+m<=31&&dd.length<=2) return `20${String(dd).padStart(2,'0')}-${String(y).padStart(2,'0')}-${String(m).padStart(2,'0')}`;
+    return `${y}-${String(m).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+  }
   return s.slice(0,10);
 }
 function mapHeaders(headers){
