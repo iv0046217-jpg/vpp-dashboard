@@ -557,7 +557,7 @@ footer b{color:var(--ink-2)}
       <button class="x" id="closeTpl">×</button>
     </div>
     <div class="modal-b">
-      <p>先选择要导入数据的 <b>年份</b> 与 <b>月份</b>，系统将为所选月份自动生成每天的 <b>日期 / 月份 / 时刻 / 星期</b>，其余列留空待填。导出为 Excel（.xlsx），可直接双击打开填写后导入。</p>
+      <p>先选择要导入数据的 <b>年份</b>、<b>月份</b> 与 <b>地市</b>（均可多选），系统将为所选月份自动生成每天的 <b>日期 / 月份 / 时刻 / 星期</b>，其余列留空待填。所选每个地市生成一个<b>以其命名的子表</b>，导出 Excel（.xlsx）填写后导入，多子表自动全部识别。</p>
       <div class="inrow">
         <label>数据年份</label>
         <input id="tplYear" type="number" min="2000" max="2100" value="2026" />
@@ -568,6 +568,13 @@ footer b{color:var(--ink-2)}
         <button class="btn btn-ghost sm" id="tplAll">全选</button>
         <button class="btn btn-ghost sm" id="tplNone">清空</button>
         <span class="tpl-hint" id="tplHint">已选 0 个月</span>
+      </div>
+      <label class="tpl-mlabel">选择地市（可多选，每个地市一个子表）</label>
+      <div class="months" id="tplCities"></div>
+      <div class="tpl-quick">
+        <button class="btn btn-ghost sm" id="tplCityAll">全选</button>
+        <button class="btn btn-ghost sm" id="tplCityNone">清空</button>
+        <span class="tpl-hint" id="tplCityHint">已选 0 个地市</span>
       </div>
       <div class="status" id="tplStatus"></div>
     </div>
@@ -1288,11 +1295,19 @@ function doImport(file){
       const data=isCsv ? e.target.result
         : (e.target.result instanceof ArrayBuffer ? new Uint8Array(e.target.result) : e.target.result);
       const wb=XLSX.read(data,{type:isCsv?'string':'array'});
-      const ws=wb.Sheets[wb.SheetNames[0]];
-      const j=XLSX.utils.sheet_to_json(ws,{defval:null,raw:false});
-      if(!j.length) throw new Error('文件为空');
-      const headers=Object.keys(j[0]);
-      const rows=rowsFromFile(headers,j);
+      /* 多子表支持：每个 sheet 独立解析，地市优先取「地市」列，其次取子表名 */
+      const rows=[];
+      for(const sn of wb.SheetNames){
+        const sh=wb.Sheets[sn]; if(!sh) continue;
+        const j=XLSX.utils.sheet_to_json(sh,{defval:null,raw:false});
+        if(!j.length) continue;
+        const headers=Object.keys(j[0]);
+        for(const r of rowsFromFile(headers,j)){
+          if(!r.city && sn!=='导入模板') r.city=sn;
+          rows.push(r);
+        }
+      }
+      if(!rows.length) throw new Error('文件为空');
       const res=parseRaw(rows); const out=res.out, cities=res.cities, hourly=res.hourly||{};
       if(!out.length) throw new Error('未解析到有效数据行');
       // resolve province
@@ -1368,6 +1383,24 @@ expMenu.querySelectorAll('button').forEach(b=>b.onclick=()=>{
 const tplModal=document.getElementById('tplModal');
 const tplMonths=document.getElementById('tplMonths');
 let tplSel=new Set();
+let tplCitySel=new Set();
+function syncTplCityChips(){
+  document.getElementById('tplCityHint').textContent=`已选 ${tplCitySel.size} 个地市`;
+  document.querySelectorAll('#tplCities .mchip').forEach(x=>x.classList.toggle('on',tplCitySel.has(x.dataset.c)));
+}
+function buildTplCities(){
+  const box=document.getElementById('tplCities');
+  box.innerHTML=ALL_CITIES.map(c=>`<div class="mchip" data-c="${c}">${c}</div>`).join('');
+  box.querySelectorAll('.mchip').forEach(ch=>ch.onclick=()=>{
+    const c=ch.dataset.c;
+    if(tplCitySel.has(c)) tplCitySel.delete(c); else tplCitySel.add(c);
+    syncTplCityChips();
+  });
+  tplCitySel=new Set((state.city&&state.city!==AGG&&ALL_CITIES.includes(state.city))?[state.city]:[]);
+  syncTplCityChips();
+}
+document.getElementById('tplCityAll').onclick=()=>{ tplCitySel=new Set(ALL_CITIES); syncTplCityChips(); };
+document.getElementById('tplCityNone').onclick=()=>{ tplCitySel.clear(); syncTplCityChips(); };
 function syncTplChips(){
   const allOn=tplSel.size===12;
   const all=tplMonths.querySelector('.mchip.all'); if(all) all.classList.toggle('on',allOn);
@@ -1388,28 +1421,34 @@ function buildTplMonths(){
 function genTemplate(){
   const st=document.getElementById('tplStatus');
   if(tplSel.size===0){ st.className='status err'; st.textContent='请至少选择一个月份'; return; }
+  if(tplCitySel.size===0){ st.className='status err'; st.textContent='请至少选择一个地市'; return; }
   const year=parseInt(document.getElementById('tplYear').value,10)||2026;
   const head=['日期','月份','时刻','日期类型','星期','日前统一电价','月分日','日分时','月发电量','日前出清电量','实际发电量','日前节点电价','实时节点电价','中长期比例','中长期电量','中长期电价','地市'];
   const WD=['周日','周一','周二','周三','周四','周五','周六'];
-  const rows=[];
-  [...tplSel].sort((a,b)=>a-b).forEach(m=>{
-    const dim=new Date(year,m,0).getDate();
-    for(let d=1; d<=dim; d++){
-      const dt=new Date(year,m-1,d);
-      const date=`${year}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      const wd=WD[dt.getDay()];
-      for(let h=0; h<24; h++) rows.push([date,m,h,wd,null,null,null,null,null,null,null,null,null,null,null]);
-    }
-  });
-  const ws=XLSX.utils.aoa_to_sheet([head,...rows]);
   const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'导入模板');
+  let totalRows=0;
+  [...tplCitySel].sort((a,b)=>a.localeCompare(b,'zh')).forEach(city=>{
+    const rows=[];
+    [...tplSel].sort((a,b)=>a-b).forEach(m=>{
+      const dim=new Date(year,m,0).getDate();
+      for(let d=1; d<=dim; d++){
+        const dt=new Date(year,m-1,d);
+        const date=`${year}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const wd=WD[dt.getDay()];
+        for(let h=0; h<24; h++) rows.push([date,m,h,wd,null,null,null,null,null,null,null,null,null,null,null,null,city]);
+      }
+    });
+    totalRows+=rows.length;
+    const ws=XLSX.utils.aoa_to_sheet([head,...rows]);
+    XLSX.utils.book_append_sheet(wb,ws,city.substring(0,31));
+  });
   const label=[...tplSel].sort((a,b)=>a-b).join('-')+'月';
-  XLSX.writeFile(wb,`收益测算_导入模板_${year}_${label}.xlsx`);
+  const cname=tplCitySel.size===1?[...tplCitySel][0]:tplCitySel.size+'地市';
+  XLSX.writeFile(wb,`收益测算_导入模板_${year}_${label}_${cname}.xlsx`);
   tplModal.classList.remove('show');
-  toast(`模板已生成（${rows.length} 行 · ${tplSel.size} 个月）`);
+  toast(`模板已生成（${tplCitySel.size} 个地市子表 · ${totalRows} 行 · ${tplSel.size} 个月）`);
 }
-document.getElementById('tplBtn').onclick=()=>{ buildTplMonths(); tplModal.classList.add('show'); };
+document.getElementById('tplBtn').onclick=()=>{ buildTplMonths(); buildTplCities(); tplModal.classList.add('show'); };
 document.getElementById('closeTpl').onclick=()=>tplModal.classList.remove('show');
 document.getElementById('tplCancel').onclick=()=>tplModal.classList.remove('show');
 tplModal.onclick=e=>{if(e.target===tplModal)tplModal.classList.remove('show');};
