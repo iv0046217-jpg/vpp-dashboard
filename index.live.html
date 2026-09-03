@@ -241,7 +241,7 @@ main{max-width:1500px;margin:0 auto;padding:18px 24px 8px}
 .section-title .badge{font-family:var(--ff);font-size:11px;font-weight:500;color:var(--muted);background:var(--surface-soft);border:1px solid var(--border);border-radius:999px;padding:2px 9px}
 
 /* KPI grid */
-.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:18px}
+.kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
 .kpi{
   position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
   padding:16px 16px 12px;box-shadow:var(--shadow-sm);overflow:hidden;
@@ -291,6 +291,7 @@ main{max-width:1500px;margin:0 auto;padding:18px 24px 8px}
 .card .ctitle-tag{font-size:10.5px;font-weight:500;color:var(--blue);background:rgba(47,111,237,.10);padding:2px 7px;border-radius:10px;margin-left:6px;vertical-align:2px;letter-spacing:.04em}
 .card .cmeta{font-size:12px;color:var(--muted);margin-top:3px}
 .chart{width:100%;height:332px;position:relative;z-index:1}
+.c-blue-soft .chart{height:420px}
 .chart.sm{height:306px}
 .chart.tall{height:432px}
 
@@ -312,13 +313,26 @@ main{max-width:1500px;margin:0 auto;padding:18px 24px 8px}
 #npaMonth{border:none;background:transparent;font-family:var(--ff);font-size:12.5px;font-weight:500;
   color:var(--ink);padding:0 4px;cursor:pointer;letter-spacing:.02em;color-scheme:light}
 #npaMonth:focus{outline:none}
-.npa-wrap{margin-top:2px;border:1px solid var(--border);border-radius:8px;
-  background:var(--surface)}
+.npa-wrap{margin-top:2px;max-height:720px;overflow-y:auto;overflow-x:hidden;border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);scrollbar-width:thin}
 .npa-table{width:100%;border-collapse:separate;border-spacing:0;font-family:'Noto Sans SC';font-size:12.5px}
 .npa-table th,.npa-table td{padding:6px 9px;border-bottom:1px solid #eef1f7;text-align:center;vertical-align:middle;
   white-space:nowrap}
-.npa-table thead th{background:#f4f7fb;font-weight:600;color:#46566a;
+.npa-table thead th{position:sticky;top:0;z-index:1;background:#f4f7fb;font-weight:600;color:#46566a;
   font-size:11px;letter-spacing:.04em;border-bottom:1px solid var(--line);font-family:'Noto Sans SC'}
+.npa-wrap::-webkit-scrollbar{width:8px;height:8px}
+.npa-wrap::-webkit-scrollbar-thumb{background:#cfd8e3;border-radius:4px}
+.npa-wrap::-webkit-scrollbar-track{background:transparent}
+/* 左卡分析：分时段均价 4 段（L/M 横向小卡）— 撑高分析区与右表等高 */
+.left-analysis .la-segs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0 6px}
+.left-analysis .la-seg{padding:7px 9px;background:rgba(47,111,237,.06);border:1px solid rgba(47,111,237,.12);
+  border-radius:7px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.left-analysis .la-seg-k{font-size:10px;color:#6B7280;letter-spacing:.04em;display:flex;justify-content:space-between;align-items:baseline}
+.left-analysis .la-seg-v{display:flex;justify-content:space-between;align-items:baseline;gap:4px;margin-top:1px}
+.left-analysis .la-seg-l{font-family:'Space Mono';font-size:13.5px;font-weight:600;color:#2f6fed;
+  font-variant-numeric:tabular-nums;line-height:1.1}
+.left-analysis .la-seg-m{font-family:'Space Mono';font-size:13.5px;font-weight:600;color:#0e8a66;
+  font-variant-numeric:tabular-nums;line-height:1.1}
 .npa-table tbody td{font-family:'Space Mono';color:#14202e;font-variant-numeric:tabular-nums}
 .npa-table tbody td:first-child{color:#6B7280;font-weight:500;width:48px}
 .npa-table tbody tr:last-child td{border-bottom:none}
@@ -784,9 +798,6 @@ function monthlySeries(){
 
 /* ============ KPI cards ============ */
 const METRICS=[
-  {key:'U',name:'市场化电费',unit:'元',color:'var(--primary)',cls:'c-primary',kind:'money',sign:false},
-  {key:'V',name:'实时结算费用',unit:'元',color:'var(--blue)',cls:'c-blue',kind:'money',sign:false},
-  {key:'W',name:'市场化收益',unit:'元',color:'var(--primary)',cls:'c-primary',kind:'money',sign:true},
   {key:'up',name:'市场化度电单价',unit:'元/MWh',color:'var(--primary)',cls:'c-primary',kind:'unit',sign:false},
   {key:'rp',name:'实时结算度电电价',unit:'元/MWh',color:'var(--blue)',cls:'c-blue',kind:'unit',sign:false},
   {key:'im',name:'收益提升度电',unit:'元/MWh',color:'var(--gold)',cls:'c-gold',kind:'unit',sign:true},
@@ -1098,6 +1109,17 @@ function renderLeftAnalysis(L, M, sumK, ymLabel){
   const fmt = v => v==null?'—':Number(v).toFixed(2);
   const spreadL = peakL.v-valleyL.v;
   const spreadM = (Mcells.length>=2) ? (peakM.v - Mcells.reduce((a,b)=>b.v<a.v?b:a,Mcells[0]).v) : null;
+  const segs=[[0,6],[6,12],[12,18],[18,24]];
+  const segRows=segs.map(([s,e])=>{
+    let mlN=0,mk=0,lnN=0,lk=0;
+    for(let h=s;h<e;h++){ if(sumK[h]>0){ if(M[h]!=null){mlN+=M[h]*sumK[h];mk+=sumK[h];} if(L[h]!=null){lnN+=L[h]*sumK[h];lk+=sumK[h];} } }
+    return {label:s+':00–'+e+':00', L: lk>0?lnN/lk:null, M: mk>0?mlN/mk:null};
+  }).map(s=>'<div class="la-seg">'
+    +'<div class="la-seg-k"><span>'+s.label+'</span><span style="color:#9CA3AF">元/MWh</span></div>'
+    +'<div class="la-seg-v">'
+      +'<span class="la-seg-l" title="日前均价">L '+(s.L==null?'—':s.L.toFixed(2))+'</span>'
+      +'<span class="la-seg-m" title="实时均价">M '+(s.M==null?'—':s.M.toFixed(2))+'</span>'
+    +'</div></div>').join('');
   box.innerHTML =
     '<div class="la-title">结算分析 · '+ymLabel+' · 日前节点电价口径</div>'
    +'<div class="la-hero">'
@@ -1122,6 +1144,7 @@ function renderLeftAnalysis(L, M, sumK, ymLabel){
      +'<span class="la-v"><span class="la-small">'+fmt(spreadM)+'</span><small>元/MWh</small></span>'
      +'<span class="la-sub">（对照 · 实时节点电价 M 口径）</span>'
    +'</div>'
+   +'<div class="la-segs">'+segRows+'</div>'
    +'<div class="la-foot">'+ymLabel+'·'+genRange+' 上网时段（实时均价 <b>'+fmt(genAvgM)+'</b> 元/MWh）· 离网时段（实时均价 '+fmt(offAvgM)+' 元/MWh）· 上网电量合计 <b class="b-ink">'+gK.toFixed(1)+'</b> MWh</div>';
 }
 
