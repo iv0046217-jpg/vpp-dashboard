@@ -292,20 +292,28 @@ main{max-width:1500px;margin:0 auto;padding:18px 24px 8px}
 .chart.sm{height:306px}
 .chart.tall{height:432px}
 
-/* date picker (24h price chart) */
+/* month picker (24h price chart · monthly view) */
 .date-pick{display:inline-flex;align-items:center;gap:4px;background:var(--surface-soft);
   padding:4px 6px;border-radius:8px;border:1px solid var(--border)}
-.dp-btn{width:26px;height:26px;border-radius:6px;border:none;background:transparent;color:var(--ink-2);
-  font-size:18px;line-height:1;cursor:pointer;transition:background .15s var(--ease),color .15s var(--ease)}
-.dp-btn:hover{background:var(--surface);color:var(--ink)}
-.dp-btn:disabled{color:var(--muted);cursor:not-allowed;background:transparent}
-#dpDate{border:none;background:transparent;font-family:var(--ff);font-size:12.5px;font-weight:500;
-  color:var(--ink);padding:0 4px;cursor:pointer;letter-spacing:.02em}
-#dpDate:focus{outline:none}
+#dpMonth{border:none;background:transparent;font-family:var(--ff);font-size:12.5px;font-weight:500;
+  color:var(--ink);padding:0 4px;cursor:pointer;letter-spacing:.02em;color-scheme:light}
+#dpMonth:focus{outline:none}
 .dp-quick{font-size:11px;font-weight:500;border:none;background:var(--surface);color:var(--ink-2);
   padding:4px 9px;border-radius:6px;cursor:pointer;transition:all .15s var(--ease);
   border:1px solid transparent;font-family:'Noto Sans SC'}
 .dp-quick:hover{border-color:var(--blue);color:var(--blue)}
+/* 结算分析小卡：水平 4 列指标 + 底注 */
+.price-analysis{margin-top:10px;padding:10px 12px 9px;background:rgba(47,111,237,.04);
+  border:1px solid rgba(47,111,237,.18);border-radius:10px;
+  display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px;font-family:'Noto Sans SC'}
+.price-analysis .pa-item{display:flex;flex-direction:column;gap:2px;min-width:0}
+.price-analysis .pa-k{font-size:10.5px;color:var(--ink-3);letter-spacing:.04em;display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.price-analysis .pa-v{font-family:'Space Mono';font-size:14.5px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.2}
+.price-analysis .pa-v small{font-family:'Noto Sans SC';font-size:10.5px;font-weight:500;color:var(--ink-3);margin-left:3px}
+.price-analysis .pa-foot{grid-column:1/-1;margin-top:4px;padding-top:7px;border-top:1px dashed rgba(47,111,237,.22);
+  font-size:10.5px;color:var(--ink-3);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.price-analysis .pa-foot .dot{width:6px;height:6px;border-radius:50%;background:var(--primary);display:inline-block}
+@media (max-width:880px){.price-analysis{grid-template-columns:repeat(2,1fr)}.price-analysis .pa-foot{grid-column:1/-1}}
 
 /* composition */
 .comp-stacked{display:flex;height:12px;border-radius:6px;overflow:hidden;margin-bottom:14px;background:var(--surface-soft);gap:2px}
@@ -470,14 +478,13 @@ footer b{color:var(--ink-2)}
             <div class="ctitle">节点价格走势 <span class="ctitle-tag" id="hourTag">24小时</span></div>
             <div class="cmeta" id="priceMeta">日前节点电价 vs 实时节点电价（0–23 时逐小时）</div>
           </div>
-          <div class="date-pick" role="group" aria-label="选择查看日期">
-            <button class="dp-btn" id="dpPrev" title="前一天" aria-label="前一天">‹</button>
-            <input type="date" id="dpDate" aria-label="选择日期">
-            <button class="dp-btn" id="dpNext" title="后一天" aria-label="后一天">›</button>
-            <button class="dp-quick" id="dpLatest" title="跳到数据最新一天">最新</button>
+          <div class="date-pick" role="group" aria-label="选择查看月份">
+            <input type="month" id="dpMonth" aria-label="选择月份">
+            <button class="dp-quick" id="dpLatest" title="跳到数据最新月份">最新月</button>
           </div>
         </div>
         <div class="chart" id="priceChart"></div>
+        <div class="price-analysis" id="priceAnalysis"></div>
       </div>
       <div class="card c-green-soft">
         <div class="chead">
@@ -624,7 +631,7 @@ function defaultCity(){
 }
 loadProvince(activeProv);
 
-const state = { province:activeProv, city:defaultCity(), months:new Set(MONTHS_ALL), priceDate:null, cityMonth:'overall' };
+const state = { province:activeProv, city:defaultCity(), months:new Set(MONTHS_ALL), priceMonth:null, cityMonth:'overall' };
 
 /* known province -> city list (for auto-detect on import) */
 const PROVINCE_CITIES = {
@@ -795,71 +802,83 @@ function renderKPIs(){
 /* ============ node price chart (24h intraday) ============ */
 let priceChart, cityChart;
 
-/* Available date range for current city+months, used to bound the date picker */
-function priceDateRange(){
+/* 可用月份集合（基于当前城市与多月筛选），用于月份选择器与渲染 */
+function priceMonthRange(){
   const dates = RECORDS.filter(r=>r.city===state.city && state.months.has(r.month))
-                       .map(r=>r.date).sort();
-  return {min:dates[0]||null, max:dates[dates.length-1]||null, dates};
+                       .map(r=>r.date);
+  if(!dates.length) return {min:null, max:null, months:new Set()};
+  const months = new Set(dates.map(d=>d.substring(0,7)));
+  const sorted=[...months].sort();
+  return {min:sorted[0], max:sorted[sorted.length-1], months};
 }
-/* Lazy default: 最末可用日期（同时 sync 月份） */
-function defaultPriceDate(){
-  const {max}=priceDateRange(); return max;
-}
-function syncDatePicker(){
-  const dr = priceDateRange();
-  const inp = document.getElementById('dpDate');
+/* 缺省：选数据最新的月份（同时 sync 选择器） */
+function defaultPriceMonth(){ const {max}=priceMonthRange(); return max; }
+function syncMonthPicker(){
+  const mr = priceMonthRange();
+  const inp = document.getElementById('dpMonth');
   if(!inp) return;
-  if(dr.min && dr.max){
-    inp.min = dr.min; inp.max = dr.max;
+  if(!state.priceMonth || !mr.months.has(state.priceMonth)){
+    state.priceMonth = mr.max || mr.min;
   }
-  if(!state.priceDate || state.priceDate < dr.min || state.priceDate > dr.max){
-    state.priceDate = dr.max || dr.min;
-  }
-  inp.value = state.priceDate || '';
-  // disable buttons at boundaries
-  const prev = document.getElementById('dpPrev');
-  const next = document.getElementById('dpNext');
-  if(prev) prev.disabled = !state.priceDate || state.priceDate <= dr.min;
-  if(next) next.disabled = !state.priceDate || state.priceDate >= dr.max;
+  inp.value = state.priceMonth || '';
+  inp.min = mr.min || '';
+  inp.max = mr.max || '';
 }
-/* Return 24-point hourly series of [L, M, K] for the selected scope+date.
-   For '全省' / '__all' we use the same HOURLY bucket if present, else fall back to a
-   simple average over visible city buckets so the chart never goes empty. */
-function getHourlyForCurrent(){
-  const d = state.priceDate;
-  if(!d) return [null,[],[],[]];
+/* 月度 24h K加权均价：按所选月份聚合当前视图下所有城市的逐小时槽位
+   - Lavg/Mavg[h] = Σ (L_h/M_h × K_h) ÷ Σ K_h（小时级 K 加权）
+   - 若该小时 K 全为 0（无任何上网），回退到该小时 L/M 的简单平均
+   - sumK[h] 用于判定该小时是否"上网时刻"（>0 即是） */
+function getMonthlyAverage(){
+  const ym = state.priceMonth;
+  if(!ym) return [null,[],[],[]];
+  const mo = +ym.substring(5,7);
   const target = state.city;
-  if(target!=='__all' && HOURLY[target]){
-    const arr = HOURLY[target][d];
-    if(arr) return [target,arr.map(s=>s?s[0]:null),arr.map(s=>s?s[1]:null),arr.map(s=>s?s[2]:null)];
-  }
-  // fallback: average over all visible cities (or all cities)
-  const cities = (target==='__all')
-    ? SCOPES.filter(c=>c!==AGG)
-    : (target===AGG ? [AGG, ...SCOPES.filter(c=>c!==AGG)] : [target]);
-  const L=new Array(24).fill(0),M=new Array(24).fill(0),K=new Array(24).fill(0);
-  const nL=new Array(24).fill(0),nM=new Array(24).fill(0);
+  let cities = [];
+  if(target!=='__all' && target!==AGG && HOURLY[target]) cities=[target];
+  else if(target==='__all') cities=SCOPES.filter(c=>c!==AGG);
+  else cities=[AGG, ...SCOPES.filter(c=>c!==AGG)];
+  const sumLW=new Array(24).fill(0),sumMW=new Array(24).fill(0),sumK=new Array(24).fill(0);
+  const sumL=new Array(24).fill(0),sumM=new Array(24).fill(0);
+  const cntL=new Array(24).fill(0),cntM=new Array(24).fill(0);
   cities.forEach(c=>{
-    const arr = HOURLY[c] && HOURLY[c][d];
-    if(!arr) return;
-    for(let h=0;h<24;h++){
-      const s=arr[h]; if(!s) continue;
-      if(s[0]!=null){L[h]+=s[0]; nL[h]++;}
-      if(s[1]!=null){M[h]+=s[1]; nM[h]++;}
-      K[h] += s[2]||0;
-    }
+    const cityH=HOURLY[c]; if(!cityH) return;
+    Object.keys(cityH).forEach(ds=>{
+      if(+ds.substring(5,7)!==mo) return;
+      const arr=cityH[ds]; if(!arr) return;
+      for(let h=0;h<24;h++){
+        const s=arr[h]; if(!s) continue;
+        const L=s[0],M=s[1],K=s[2]||0;
+        if(L!=null){ sumLW[h]+=L*K; sumL[h]+=L; cntL[h]++; }
+        if(M!=null){ sumMW[h]+=M*K; sumM[h]+=M; cntM[h]++; }
+        sumK[h]+=K;
+      }
+    });
   });
-  return [target, L.map((v,i)=>nL[i]?v/nL[i]:null), M.map((v,i)=>nM[i]?v/nM[i]:null), K];
+  const Lavg=new Array(24).fill(null),Mavg=new Array(24).fill(null);
+  for(let h=0;h<24;h++){
+    Lavg[h] = sumK[h]>0 ? sumLW[h]/sumK[h] : (cntL[h]?sumL[h]/cntL[h]:null);
+    Mavg[h] = sumK[h]>0 ? sumMW[h]/sumK[h] : (cntM[h]?sumM[h]/cntM[h]:null);
+  }
+  return [target, Lavg, Mavg, sumK];
 }
 function fmtDateCN(iso){
   if(!iso) return '—';
   const p=iso.split('-'); return p[0]+'年'+parseInt(p[1],10)+'月'+parseInt(p[2],10)+'日';
 }
+/* 月度24h K加权均价 + 上网时段 markArea 色阴影 + 下方结算分析小卡 */
 function renderPrice(){
-  // 跨省份切换 / 导入新数据后，先按当前范围校正所选日期，避免 state.priceDate 越界导致 24h 图为空
-  syncDatePicker();
-  const [scope, L, M, Karr] = getHourlyForCurrent();
+  syncMonthPicker();
+  const [scope, L, M, sumK] = getMonthlyAverage();
   const x = Array.from({length:24},(_,h)=>h+':00');
+  // 连续上网时段区间（K[h] > 0），用于 markArea
+  const ranges=[]; let s=-1;
+  for(let h=0;h<=24;h++){
+    const on = h<24 && sumK[h]>0;
+    if(on && s<0) s=h;
+    if(!on && s>=0){ ranges.push([s,h-1]); s=-1; }
+  }
+  // 小时级 K 总量（按城市简单求和），给 tooltip 用
+  const Karr = sumK;
   const present = L.filter(v=>v!=null).length;
   const opt={
     grid:{left:78,right:24,top:42,bottom:40},
@@ -869,7 +888,10 @@ function renderPrice(){
       formatter: function(params){
         if(!params||!params.length) return '';
         const hr = params[0].axisValue;
-        let h = `<div style="font-weight:600;margin-bottom:6px;font-family:'Space Grotesk'">${scope} · ${state.priceDate} · ${hr}</div>`;
+        const hh = +hr.split(':')[0];
+        const isGen = sumK[hh]>0;
+        const ymLabel = state.priceMonth ? (state.priceMonth.replace('-','年')+'月') : '—';
+        let h = `<div style="font-weight:600;margin-bottom:6px;font-family:'Space Grotesk'">${scope} · ${ymLabel} · ${hr}${isGen?'<span style="margin-left:6px;padding:1px 6px;border-radius:4px;background:rgba(14,138,102,.10);color:#0e8a66;font-size:10px">上网时段</span>':''}</div>`;
         params.forEach(p=>{
           const v = p.value==null?'—':Number(p.value).toFixed(2);
           h += `<div style="display:flex;align-items:center;gap:8px;margin:3px 0">
@@ -879,9 +901,9 @@ function renderPrice(){
           </div>`;
         });
         if(Karr && Karr.length){
-          const sumK = Karr.reduce((s,v)=>s+(v||0),0);
+          const kK = Karr[hh]||0;
           h += `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #d8e0ec;font-size:11px;color:#5b6b7e;font-family:'Space Mono'">
-            当日实际发电量合计 <b style="color:#14202e">${sumK.toFixed(2)} MWh</b>
+            当月该小时上网电量合计 <b style="color:#14202e">${kK.toFixed(2)} MWh</b>
           </div>`;
         }
         return h;
@@ -901,6 +923,8 @@ function renderPrice(){
         itemStyle:{color:'#2f6fed'},
         lineStyle:{width:2.4,color:'#2f6fed'},
         areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(47,111,237,.16)'},{offset:1,color:'rgba(47,111,237,0)'}])},
+        markArea:{silent:true,itemStyle:{color:'rgba(14,138,102,.07)',borderColor:'rgba(14,138,102,.22)',borderWidth:1,borderType:'dashed'},
+          data: ranges.map(r=>[{xAxis:r[0]+':00'},{xAxis:(r[1]+1)+':00'}])},
         emphasis:{focus:'series',lineStyle:{width:3}}},
       {name:'实时节点电价',type:'line',data:M,smooth:true,symbol:'circle',symbolSize:5,
         itemStyle:{color:'#0e8a66'},
@@ -912,24 +936,52 @@ function renderPrice(){
   };
   if(!priceChart) priceChart=echarts.init(document.getElementById('priceChart'));
   priceChart.setOption(opt,true);
-  // meta line
-  const nm = state.city==='__all'?'全部地市(平均)':(state.city===AGG?AGG:'地市·'+state.city);
-  const daysCov = present;
+  const nm = state.city==='__all'?'全部地市(月度平均)':(state.city===AGG?AGG:'地市·'+state.city);
+  const ymLabel = state.priceMonth ? (state.priceMonth.replace('-','年')+'月') : '—';
   const meta = document.getElementById('priceMeta');
-  meta.textContent = `${nm} · ${state.priceDate?fmtDateCN(state.priceDate):'—'} · 24小时价格走势（${daysCov}/24 时点）`;
-  syncDatePicker();
+  meta.textContent = `${nm} · ${ymLabel} · 月度24小时均价（${present}/24 时点有效）`;
+  renderPriceAnalysis(L, M, sumK);
+  syncMonthPicker();
 }
-function shiftDate(delta){
-  if(!state.priceDate) return;
-  // safe day arithmetic: parse ISO components (avoid TZ off-by-one with new Date(...).toISOString)
-  const [y,m,d] = state.priceDate.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m-1, d));
-  dt.setUTCDate(dt.getUTCDate()+delta);
-  const nd = dt.toISOString().slice(0,10);
-  const dr=priceDateRange();
-  if(nd<dr.min||nd>dr.max){ toaster(nd<dr.min?'已是可查最早一天':'已是可查最新一天'); return; }
-  state.priceDate=nd; renderPrice();
+/* 峰谷价差等结算分析（实时节点电价口径；同步算日前的做参考） */
+function renderPriceAnalysis(L, M, sumK){
+  const box=document.getElementById('priceAnalysis');
+  if(!box) return;
+  // 实时 M：仅看有效值
+  const Mcells = M.map((v,i)=>v!=null?{v,i}:null).filter(x=>x);
+  if(Mcells.length<2){ box.innerHTML='<div class="pa-foot"><span class="dot"></span>所选月份暂无足够价格数据用于结算分析</div>'; return; }
+  const Lcells = L.map((v,i)=>v!=null?{v,i}:null).filter(x=>x);
+  // 峰/谷：按实时节点电价口径
+  const peakM=Mcells.reduce((a,b)=>b.v>a.v?b:a,Mcells[0]);
+  const valleyM=Mcells.reduce((a,b)=>b.v<a.v?b:a,Mcells[0]);
+  const peakL=Lcells.reduce((a,b)=>b.v>a.v?b:a,Lcells[0]);
+  const valleyL=Lcells.reduce((a,b)=>b.v<a.v?b:a,Lcells[0]);
+  // 上网时段（K>0）K加权均价
+  let genNum=0,genDen=0,genKSum=0;
+  for(let h=0;h<24;h++){
+    if(sumK[h]>0 && M[h]!=null){ genNum+=M[h]*sumK[h]; genDen+=sumK[h]; genKSum+=sumK[h]; }
+  }
+  const genAvgM = genDen>0?genNum/genDen:null;
+  // 离网时段（K=0）简单均价
+  const offVals = M.map((v,i)=>(sumK[i]===0 && v!=null)?v:null).filter(x=>x!=null);
+  const offAvgM = offVals.length? offVals.reduce((a,b)=>a+b,0)/offVals.length : null;
+  // 上网时段范围
+  const firstGen=sumK.findIndex(k=>k>0);
+  const lastGen=firstGen<0?-1:23-[...sumK].reverse().findIndex(k=>k>0);
+  const genRange = firstGen<0?'—':(`${firstGen}:00 – ${lastGen+1}:00`);
+  const ymLabel = state.priceMonth ? state.priceMonth.replace('-','年')+'月' : '—';
+  const fmt = v => v==null?'—':Number(v).toFixed(2);
+  const kwh = v => v==null?'—':v.toFixed(1);
+  box.innerHTML =
+    `<div class="pa-item"><div class="pa-k">实时峰价 <small>元/MWh</small></div><div class="pa-v">${fmt(peakM.v)} <small>${peakM.i}:00</small></div></div>
+     <div class="pa-item"><div class="pa-k">实时谷价 <small>元/MWh</small></div><div class="pa-v">${fmt(valleyM.v)} <small>${valleyM.i}:00</small></div></div>
+     <div class="pa-item"><div class="pa-k">实时峰谷价差 <small>元/MWh</small></div><div class="pa-v" style="color:#cf8415">${fmt(peakM.v-valleyM.v)}</div></div>
+     <div class="pa-item"><div class="pa-k">日前峰谷价差 <small>元/MWh</small></div><div class="pa-v" style="color:#46566a">${fmt(peakL.v-valleyL.v)}</div></div>
+     <div class="pa-foot">
+       <span class="dot"></span>${ymLabel}·${genRange} 上网时段（实时均价 <b style="color:#0e8a66;font-family:Space Mono">${fmt(genAvgM)}</b> 元/MWh）· 离网时段（实时均价 ${fmt(offAvgM)} 元/MWh）· 上网电量合计 <b style="color:#14202e;font-family:Space Mono">${kwh(genKSum)}</b> MWh
+     </div>`;
 }
+function shiftDate(delta){ /* deprecated: 月份选择器原生支持滚动切换；保留函数防外部引用 */ }
 function toaster(m){ if(typeof toast==='function')toast(m); }
 
 /* ============ composition ============ */
@@ -1178,20 +1230,16 @@ function updateCityMeta(){
 
 /* date picker for the 24h price chart */
 (function bindDatePicker(){
-  const inp = document.getElementById('dpDate');
-  const prev = document.getElementById('dpPrev');
-  const next = document.getElementById('dpNext');
+  const inp = document.getElementById('dpMonth');
   const latest = document.getElementById('dpLatest');
   if(!inp) return;
   inp.addEventListener('change', ()=>{
     const v = inp.value;
     if(!v) return;
-    state.priceDate = v;
+    state.priceMonth = v;
     renderPrice();
   });
-  if(prev) prev.addEventListener('click', ()=>shiftDate(-1));
-  if(next) next.addEventListener('click', ()=>shiftDate(+1));
-  if(latest) latest.addEventListener('click', ()=>{ state.priceDate = defaultPriceDate(); renderPrice(); });
+  if(latest) latest.addEventListener('click', ()=>{ state.priceMonth = defaultPriceMonth(); renderPrice(); });
 })();
 
 /* ============ import engine ============ */
