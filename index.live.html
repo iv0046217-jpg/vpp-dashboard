@@ -277,7 +277,9 @@ main{max-width:1500px;margin:0 auto;padding:18px 24px 8px}
 /* card 浅色皮肤 — 每个卡用不同浅色调，但保持低饱和克制 */
 .card.c-blue-soft{background:var(--tint-blue);border-color:var(--tint-blue-edge)}
 .card.c-blue-soft::before{background:linear-gradient(90deg,#2f6fed,rgba(47,111,237,0))}
-.card.c-green-soft{background:var(--tint-green);border-color:var(--tint-green-edge)}
+.card.c-green-soft{background:var(--tint-green);border-color:var(--tint-green-edge);display:flex;flex-direction:column}
+.c-green-soft .npa-wrap{flex:1;min-height:0;display:flex;flex-direction:column}
+.c-green-soft .npa-table{flex:1;height:100%}
 .card.c-green-soft::before{background:linear-gradient(90deg,#0e8a66,rgba(14,138,102,0))}
 .card.c-gold-soft{background:var(--tint-gold);border-color:var(--tint-gold-edge)}
 .card.c-gold-soft::before{background:linear-gradient(90deg,#cf8415,rgba(207,132,21,0))}
