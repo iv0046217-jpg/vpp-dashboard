@@ -323,16 +323,30 @@ main{max-width:1500px;margin:0 auto;padding:18px 24px 8px}
 .npa-wrap::-webkit-scrollbar{width:8px;height:8px}
 .npa-wrap::-webkit-scrollbar-thumb{background:#cfd8e3;border-radius:4px}
 .npa-wrap::-webkit-scrollbar-track{background:transparent}
-/* 左卡分析：分时段均价 4 段（L/M 横向小卡）— 撑高分析区与右表等高 */
-.left-analysis .la-segs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0 6px}
-.left-analysis .la-seg{padding:7px 9px;background:rgba(47,111,237,.06);border:1px solid rgba(47,111,237,.12);
-  border-radius:7px;display:flex;flex-direction:column;gap:2px;min-width:0}
-.left-analysis .la-seg-k{font-size:10px;color:#6B7280;letter-spacing:.04em;display:flex;justify-content:space-between;align-items:baseline}
-.left-analysis .la-seg-v{display:flex;justify-content:space-between;align-items:baseline;gap:4px;margin-top:1px}
-.left-analysis .la-seg-l{font-family:'Space Mono';font-size:13.5px;font-weight:600;color:#2f6fed;
+/* 左卡分析：按省份峰谷时段（尖/峰/平/谷）的日前节点均价 */
+.left-analysis .la-pvs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0 6px}
+.left-analysis .la-pv{padding:8px 10px;border-radius:7px;border:1px solid;
+  display:flex;flex-direction:column;gap:3px;min-width:0}
+.left-analysis .la-pv-k{display:flex;align-items:center;gap:6px;font-size:10px}
+.left-analysis .la-pv-tag{padding:1px 6px;border-radius:4px;font-weight:600;letter-spacing:.04em;white-space:nowrap}
+.left-analysis .la-pv-h{color:#9CA3AF;font-size:9.5px;white-space:nowrap}
+.left-analysis .la-pv-v{font-family:'Space Mono';font-size:17px;font-weight:700;
   font-variant-numeric:tabular-nums;line-height:1.1}
-.left-analysis .la-seg-m{font-family:'Space Mono';font-size:13.5px;font-weight:600;color:#0e8a66;
-  font-variant-numeric:tabular-nums;line-height:1.1}
+.left-analysis .la-pv-u{font-size:9.5px;color:#9CA3AF;letter-spacing:.02em}
+/* 尖峰 / 峰 / 平 / 谷 配色 */
+.left-analysis .la-pv.sharp{background:#fef2f2;border-color:#fecaca}
+.left-analysis .la-pv.sharp .la-pv-tag{background:#fee2e2;color:#b91c1c}
+.left-analysis .la-pv.sharp .la-pv-v{color:#b91c1c}
+.left-analysis .la-pv.peak{background:#fff7ed;border-color:#fed7aa}
+.left-analysis .la-pv.peak .la-pv-tag{background:#ffedd5;color:#c2410c}
+.left-analysis .la-pv.peak .la-pv-v{color:#c2410c}
+.left-analysis .la-pv.flat{background:#f8fafc;border-color:#e2e8f0}
+.left-analysis .la-pv.flat .la-pv-tag{background:#eef2f7;color:#475569}
+.left-analysis .la-pv.flat .la-pv-v{color:#475569}
+.left-analysis .la-pv.valley{background:#eff6ff;border-color:#bfdbfe}
+.left-analysis .la-pv.valley .la-pv-tag{background:#dbeafe;color:#1d4ed8}
+.left-analysis .la-pv.valley .la-pv-v{color:#1d4ed8}
+@media (max-width:1180px){.left-analysis .la-pvs{grid-template-columns:repeat(2,1fr)}}
 .npa-table tbody td{font-family:'Space Mono';color:#14202e;font-variant-numeric:tabular-nums}
 .npa-table tbody td:first-child{color:#6B7280;font-weight:500;width:48px}
 .npa-table tbody tr:last-child td{border-bottom:none}
@@ -1088,6 +1102,37 @@ function renderComp(){
   if(meta) meta.textContent = ymLabel+' · 24时刻日前/实时节点均价（上网时段黄色高亮）· 单位：元/MWh';
   renderLeftAnalysis(L, M, sumK, ymLabel);
 }
+/* 峰谷时段定义（按省份）：尖峰/峰/平/谷，hours 为所属小时（h 代表 h:00–h+1:00） */
+const PEAK_SEGS={
+  '广东省':{
+    sharp:{name:'尖峰',months:[7,8,9],hours:[11,15,16]},
+    peak:{name:'峰',hours:[10,11,14,15,16,17,18]},
+    flat:{name:'平',hours:[8,9,12,13,19,20,21,22,23]},
+    valley:{name:'谷',hours:[0,1,2,3,4,5,6,7]}
+  },
+  '广西':{
+    sharp:{name:'尖峰',months:[7,8,9],hours:[11,16]},
+    peak:{name:'峰',hours:[10,11,16,17,18,19,20]},
+    flat:{name:'平',hours:[7,8,9,12,13,14,15,21,22]},
+    valley:{name:'谷',hours:[23,0,1,2,3,4,5,6]}
+  }
+};
+function segsForProvince(){
+  const p = state.province||'';
+  return (p.indexOf('广西')>=0) ? PEAK_SEGS['广西'] : PEAK_SEGS['广东省'];
+}
+/* 返回当前省份+月份的峰谷段列表（尖峰月份时峰段剔除尖峰小时） */
+function peakValleySegs(moInt){
+  const s = segsForProvince();
+  const isSharp = moInt && s.sharp.months.indexOf(moInt)>=0;
+  const out = [];
+  if(isSharp) out.push({cls:'sharp', name:s.sharp.name, hours:s.sharp.hours});
+  const peakHours = isSharp ? s.peak.hours.filter(h=>s.sharp.hours.indexOf(h)<0) : s.peak.hours;
+  out.push({cls:'peak', name:s.peak.name, hours:peakHours});
+  out.push({cls:'flat', name:s.flat.name, hours:s.flat.hours});
+  out.push({cls:'valley', name:s.valley.name, hours:s.valley.hours});
+  return out;
+}
 /* 结算分析（搬到左卡走势图下方）：编辑式排版，对比字号（HERO 36 / 峰谷 24 / 实时对照 18 / 标题 12 / 标签 10.5） */
 function renderLeftAnalysis(L, M, sumK, ymLabel){
   const box=document.getElementById('leftAnalysis');
@@ -1109,17 +1154,17 @@ function renderLeftAnalysis(L, M, sumK, ymLabel){
   const fmt = v => v==null?'—':Number(v).toFixed(2);
   const spreadL = peakL.v-valleyL.v;
   const spreadM = (Mcells.length>=2) ? (peakM.v - Mcells.reduce((a,b)=>b.v<a.v?b:a,Mcells[0]).v) : null;
-  const segs=[[0,6],[6,12],[12,18],[18,24]];
-  const segRows=segs.map(([s,e])=>{
-    let mlN=0,mk=0,lnN=0,lk=0;
-    for(let h=s;h<e;h++){ if(sumK[h]>0){ if(M[h]!=null){mlN+=M[h]*sumK[h];mk+=sumK[h];} if(L[h]!=null){lnN+=L[h]*sumK[h];lk+=sumK[h];} } }
-    return {label:s+':00–'+e+':00', L: lk>0?lnN/lk:null, M: mk>0?mlN/mk:null};
-  }).map(s=>'<div class="la-seg">'
-    +'<div class="la-seg-k"><span>'+s.label+'</span><span style="color:#9CA3AF">元/MWh</span></div>'
-    +'<div class="la-seg-v">'
-      +'<span class="la-seg-l" title="日前均价">L '+(s.L==null?'—':s.L.toFixed(2))+'</span>'
-      +'<span class="la-seg-m" title="实时均价">M '+(s.M==null?'—':s.M.toFixed(2))+'</span>'
-    +'</div></div>').join('');
+  const moInt = state.npaMonth ? +state.npaMonth.substring(5,7) : null;
+  const segRows = peakValleySegs(moInt).map(s=>{
+    let n=0,d=0;
+    s.hours.forEach(h=>{ if(sumK[h]>0 && L[h]!=null){ n+=L[h]*sumK[h]; d+=sumK[h]; } });
+    const v = d>0?n/d:null;
+    return '<div class="la-pv '+s.cls+'" title="'+s.name+' · 日前节点均价（上网时刻 K 加权）">'
+      +'<div class="la-pv-k"><span class="la-pv-tag">'+s.name+'</span><span class="la-pv-h">'+s.hours.length+'h</span></div>'
+      +'<div class="la-pv-v">'+(v==null?'—':v.toFixed(2))+'</div>'
+      +'<div class="la-pv-u">元/MWh</div>'
+    +'</div>';
+  }).join('');
   box.innerHTML =
     '<div class="la-title">结算分析 · '+ymLabel+' · 日前节点电价口径</div>'
    +'<div class="la-hero">'
@@ -1144,7 +1189,7 @@ function renderLeftAnalysis(L, M, sumK, ymLabel){
      +'<span class="la-v"><span class="la-small">'+fmt(spreadM)+'</span><small>元/MWh</small></span>'
      +'<span class="la-sub">（对照 · 实时节点电价 M 口径）</span>'
    +'</div>'
-   +'<div class="la-segs">'+segRows+'</div>'
+   +'<div class="la-pvs">'+segRows+'</div>'
    +'<div class="la-foot">'+ymLabel+'·'+genRange+' 上网时段（实时均价 <b>'+fmt(genAvgM)+'</b> 元/MWh）· 离网时段（实时均价 '+fmt(offAvgM)+' 元/MWh）· 上网电量合计 <b class="b-ink">'+gK.toFixed(1)+'</b> MWh</div>';
 }
 
