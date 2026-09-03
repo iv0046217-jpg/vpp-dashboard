@@ -330,6 +330,39 @@ main{max-width:1500px;margin:0 auto;padding:18px 24px 8px}
 .npa-wrap::-webkit-scrollbar{width:8px;height:8px}
 .npa-wrap::-webkit-scrollbar-thumb{background:#cfd8e3;border-radius:4px}
 .npa-wrap::-webkit-scrollbar-track{background:transparent}
+/* 结算分析：搬到左侧走势图下方，对比字号（36 / 24 / 18 / 12 / 10.5px）打破单调 */
+.left-analysis{margin-top:12px;padding:12px 16px 11px;background:rgba(47,111,237,.045);
+  border:1px solid rgba(47,111,237,.20);border-radius:10px;
+  font-family:'Noto Sans SC';color:#14202e}
+.left-analysis .la-title{font-size:12px;font-weight:600;color:#46566a;letter-spacing:.06em;margin-bottom:6px;
+  display:flex;align-items:center;gap:6px}
+.left-analysis .la-title::before{content:"";width:4px;height:14px;border-radius:2px;background:linear-gradient(180deg,#cf8415,#f59e0b);display:inline-block}
+/* 主视觉：日前峰谷价差（HERO） */
+.left-analysis .la-hero{text-align:center;padding:6px 0 12px;border-bottom:1px dashed rgba(47,111,237,.22);margin-bottom:10px}
+.left-analysis .la-k{font-size:10.5px;color:#6B7280;letter-spacing:.08em;text-transform:uppercase;font-weight:500}
+.left-analysis .la-big{font-family:'Space Mono';font-size:36px;font-weight:700;color:#cf8415;
+  font-variant-numeric:tabular-nums;line-height:1.05;letter-spacing:-.03em}
+.left-analysis .la-big+small{font-family:'Noto Sans SC';font-size:11.5px;color:#6B7280;margin-left:6px;font-weight:500;letter-spacing:.02em}
+.left-analysis .la-sub{font-size:10.5px;color:#9CA3AF;margin-top:3px;letter-spacing:.04em}
+/* 次级：日前峰 / 日前谷 */
+.left-analysis .la-pair{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:8px}
+.left-analysis .la-cell{padding:2px 0}
+.left-analysis .la-mid{font-family:'Space Mono';font-size:24px;font-weight:600;color:#14202e;
+  font-variant-numeric:tabular-nums;line-height:1.1}
+.left-analysis .la-mid+small{font-family:'Space Mono';font-size:13px;color:#6B7280;margin-left:6px;font-weight:500}
+.left-analysis .la-cell .la-k{margin-bottom:4px}
+/* 对照：实时峰谷价差 */
+.left-analysis .la-rt{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:8px 0 10px;
+  border-top:1px dashed rgba(47,111,237,.18);border-bottom:1px dashed rgba(47,111,237,.18);margin-bottom:8px}
+.left-analysis .la-rt .la-v{display:inline-flex;align-items:baseline}
+.left-analysis .la-small{font-family:'Space Mono';font-size:18px;font-weight:600;color:#46566a;
+  font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.left-analysis .la-small+small{font-family:'Noto Sans SC';font-size:11px;color:#9CA3AF;margin-left:5px;font-weight:500}
+/* 底注：上下文 */
+.left-analysis .la-foot{font-size:10.5px;color:#6B7280;line-height:1.65;letter-spacing:.02em}
+.left-analysis .la-foot b{font-family:'Space Mono';color:#0e8a66;font-weight:600;letter-spacing:0}
+.left-analysis .la-foot b.b-ink{color:#14202e}
+@media (max-width:880px){.left-analysis .la-big{font-size:30px}.left-analysis .la-mid{font-size:20px}}
 
 
 /* composition */
@@ -503,6 +536,7 @@ footer b{color:var(--ink-2)}
           </div>
         </div>
         <div class="chart" id="priceChart"></div>
+        <div class="left-analysis" id="leftAnalysis"></div>
       </div>
       <div class="card c-green-soft">
         <div class="chead">
@@ -516,7 +550,6 @@ footer b{color:var(--ink-2)}
           </div>
         </div>
         <div class="npa-wrap"><table class="npa-table" id="npaTable"></table></div>
-        <div class="price-analysis" id="npaAnalysis"></div>
       </div>
     </div>
 
@@ -1042,16 +1075,16 @@ function renderComp(){
   if(tag) tag.textContent=ymLabel;
   const meta=document.getElementById('npaMeta');
   if(meta) meta.textContent = ymLabel+' · 24时刻日前/实时节点均价（上网时段黄色高亮）· 单位：元/MWh';
-  renderNpaAnalysis(L, M, sumK, ymLabel);
+  renderLeftAnalysis(L, M, sumK, ymLabel);
 }
-function renderNpaAnalysis(L, M, sumK, ymLabel){
-  const box=document.getElementById('npaAnalysis');
+/* 结算分析（搬到左卡走势图下方）：编辑式排版，对比字号（HERO 36 / 峰谷 24 / 实时对照 18 / 标题 12 / 标签 10.5） */
+function renderLeftAnalysis(L, M, sumK, ymLabel){
+  const box=document.getElementById('leftAnalysis');
   if(!box) return;
   const Mcells=M.map((v,i)=>v!=null?{v,i}:null).filter(x=>x);
-  if(Mcells.length<2){ box.innerHTML='<div class="pa-foot"><span class="dot"></span>所选月份暂无足够价格数据用于结算分析</div>'; return; }
   const Lcells=L.map((v,i)=>v!=null?{v,i}:null).filter(x=>x);
+  if(Lcells.length<2){ box.innerHTML='<div class="la-foot">所选月份暂无足够价格数据用于结算分析</div>'; return; }
   const peakM=Mcells.reduce((a,b)=>b.v>a.v?b:a,Mcells[0]);
-  const valleyM=Mcells.reduce((a,b)=>b.v<a.v?b:a,Mcells[0]);
   const peakL=Lcells.reduce((a,b)=>b.v>a.v?b:a,Lcells[0]);
   const valleyL=Lcells.reduce((a,b)=>b.v<a.v?b:a,Lcells[0]);
   let gN=0,gD=0,gK=0;
@@ -1063,12 +1096,33 @@ function renderNpaAnalysis(L, M, sumK, ymLabel){
   const lastGen=firstGen<0?-1:23-[...sumK].reverse().findIndex(k=>k>0);
   const genRange = firstGen<0?'—':(firstGen+':00 – '+(lastGen+1)+':00');
   const fmt = v => v==null?'—':Number(v).toFixed(2);
+  const spreadL = peakL.v-valleyL.v;
+  const spreadM = (Mcells.length>=2) ? (peakM.v - Mcells.reduce((a,b)=>b.v<a.v?b:a,Mcells[0]).v) : null;
   box.innerHTML =
-    '<div class="pa-item"><div class="pa-k">日前峰价 <small>元/MWh</small></div><div class="pa-v">'+fmt(peakL.v)+' <small>'+peakL.i+':00</small></div></div>'
-   +'<div class="pa-item"><div class="pa-k">日前谷价 <small>元/MWh</small></div><div class="pa-v">'+fmt(valleyL.v)+' <small>'+valleyL.i+':00</small></div></div>'
-   +'<div class="pa-item"><div class="pa-k">日前峰谷价差 <small>元/MWh</small></div><div class="pa-v" style="color:#cf8415">'+fmt(peakL.v-valleyL.v)+'</div></div>'
-   +'<div class="pa-item"><div class="pa-k">实时峰谷价差 <small>元/MWh</small></div><div class="pa-v" style="color:#46566a">'+fmt(peakM.v-valleyM.v)+'</div></div>'
-   +'<div class="pa-foot"><span class="dot"></span>'+ymLabel+'·'+genRange+' 上网时段（实时均价 <b style="color:#0e8a66;font-family:Space Mono">'+fmt(genAvgM)+'</b> 元/MWh）· 离网时段（实时均价 '+fmt(offAvgM)+' 元/MWh）· 上网电量合计 <b style="color:#14202e;font-family:Space Mono">'+gK.toFixed(1)+'</b> MWh</div>';
+    '<div class="la-title">结算分析 · '+ymLabel+' · 日前节点电价口径</div>'
+   +'<div class="la-hero">'
+     +'<div class="la-k">日前峰谷价差</div>'
+     +'<div class="la-v"><span class="la-big">'+fmt(spreadL)+'</span><small>元/MWh</small></div>'
+     +'<div class="la-sub">日前节点电价 L 口径 · 全省月度聚合</div>'
+   +'</div>'
+   +'<div class="la-pair">'
+     +'<div class="la-cell">'
+       +'<div class="la-k">日前峰价</div>'
+       +'<div class="la-v"><span class="la-mid">'+fmt(peakL.v)+'</span><small>'+peakL.i+':00</small></div>'
+       +'<div class="la-sub">元/MWh</div>'
+     +'</div>'
+     +'<div class="la-cell">'
+       +'<div class="la-k">日前谷价</div>'
+       +'<div class="la-v"><span class="la-mid">'+fmt(valleyL.v)+'</span><small>'+valleyL.i+':00</small></div>'
+       +'<div class="la-sub">元/MWh</div>'
+     +'</div>'
+   +'</div>'
+   +'<div class="la-rt">'
+     +'<span class="la-k">实时峰谷价差</span>'
+     +'<span class="la-v"><span class="la-small">'+fmt(spreadM)+'</span><small>元/MWh</small></span>'
+     +'<span class="la-sub">（对照 · 实时节点电价 M 口径）</span>'
+   +'</div>'
+   +'<div class="la-foot">'+ymLabel+'·'+genRange+' 上网时段（实时均价 <b>'+fmt(genAvgM)+'</b> 元/MWh）· 离网时段（实时均价 '+fmt(offAvgM)+' 元/MWh）· 上网电量合计 <b class="b-ink">'+gK.toFixed(1)+'</b> MWh</div>';
 }
 
 /* ============ city comparison ============ */
