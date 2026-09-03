@@ -1064,10 +1064,10 @@ function renderNpaAnalysis(L, M, sumK, ymLabel){
   const genRange = firstGen<0?'—':(firstGen+':00 – '+(lastGen+1)+':00');
   const fmt = v => v==null?'—':Number(v).toFixed(2);
   box.innerHTML =
-    '<div class="pa-item"><div class="pa-k">实时峰价 <small>元/MWh</small></div><div class="pa-v">'+fmt(peakM.v)+' <small>'+peakM.i+':00</small></div></div>'
-   +'<div class="pa-item"><div class="pa-k">实时谷价 <small>元/MWh</small></div><div class="pa-v">'+fmt(valleyM.v)+' <small>'+valleyM.i+':00</small></div></div>'
-   +'<div class="pa-item"><div class="pa-k">实时峰谷价差 <small>元/MWh</small></div><div class="pa-v" style="color:#cf8415">'+fmt(peakM.v-valleyM.v)+'</div></div>'
-   +'<div class="pa-item"><div class="pa-k">日前峰谷价差 <small>元/MWh</small></div><div class="pa-v" style="color:#46566a">'+fmt(peakL.v-valleyL.v)+'</div></div>'
+    '<div class="pa-item"><div class="pa-k">日前峰价 <small>元/MWh</small></div><div class="pa-v">'+fmt(peakL.v)+' <small>'+peakL.i+':00</small></div></div>'
+   +'<div class="pa-item"><div class="pa-k">日前谷价 <small>元/MWh</small></div><div class="pa-v">'+fmt(valleyL.v)+' <small>'+valleyL.i+':00</small></div></div>'
+   +'<div class="pa-item"><div class="pa-k">日前峰谷价差 <small>元/MWh</small></div><div class="pa-v" style="color:#cf8415">'+fmt(peakL.v-valleyL.v)+'</div></div>'
+   +'<div class="pa-item"><div class="pa-k">实时峰谷价差 <small>元/MWh</small></div><div class="pa-v" style="color:#46566a">'+fmt(peakM.v-valleyM.v)+'</div></div>'
    +'<div class="pa-foot"><span class="dot"></span>'+ymLabel+'·'+genRange+' 上网时段（实时均价 <b style="color:#0e8a66;font-family:Space Mono">'+fmt(genAvgM)+'</b> 元/MWh）· 离网时段（实时均价 '+fmt(offAvgM)+' 元/MWh）· 上网电量合计 <b style="color:#14202e;font-family:Space Mono">'+gK.toFixed(1)+'</b> MWh</div>';
 }
 
