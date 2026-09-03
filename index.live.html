@@ -1156,10 +1156,10 @@ function renderLeftAnalysis(L, M, sumK, ymLabel){
   const spreadM = (Mcells.length>=2) ? (peakM.v - Mcells.reduce((a,b)=>b.v<a.v?b:a,Mcells[0]).v) : null;
   const moInt = state.npaMonth ? +state.npaMonth.substring(5,7) : null;
   const segRows = peakValleySegs(moInt).map(s=>{
-    let n=0,d=0;
-    s.hours.forEach(h=>{ if(sumK[h]>0 && L[h]!=null){ n+=L[h]*sumK[h]; d+=sumK[h]; } });
-    const v = d>0?n/d:null;
-    return '<div class="la-pv '+s.cls+'" title="'+s.name+' · 日前节点均价（上网时刻 K 加权）">'
+    let n=0,c=0;
+    s.hours.forEach(h=>{ if(L[h]!=null){ n+=L[h]; c++; } });
+    const v = c>0?n/c:null;
+    return '<div class="la-pv '+s.cls+'" title="'+s.name+' · 日前节点均价（全时刻简单平均）">'
       +'<div class="la-pv-k"><span class="la-pv-tag">'+s.name+'</span><span class="la-pv-h">'+s.hours.length+'h</span></div>'
       +'<div class="la-pv-v">'+(v==null?'—':v.toFixed(2))+'</div>'
       +'<div class="la-pv-u">元/MWh</div>'
