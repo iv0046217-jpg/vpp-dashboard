@@ -538,7 +538,7 @@ footer b{color:var(--ink-2)}
         <label>数据所属省份（留空将按地市自动识别）</label>
         <input id="provIn" type="text" placeholder="例如：广东省 / 广西壮族自治区" />
       </div>
-      <div class="col-map">必备列（表头可含别称）：日期 · 日前统一电价 · 月发电量 · 日前出清电量 · 实际发电量 · 日前节点电价 · 实时节点电价 · 中长期比例 · 中长期电量 · 中长期电价 ·（可选）地市</div>
+      <div class="col-map">列位与原始测算表一致：日期 · 时刻 · 日前统一电价 · 月分日 · 日分时 · 月发电量 · 日前出清电量 · 实际发电量 · 日前节点电价 · 实时节点电价 · 中长期比例 · 中长期电量 · 中长期电价 ·（可选）地市；中长期电量留空按 0，日前出清电量留空按实际发电量</div>
       <div class="drop" id="drop">将文件拖拽到此处，或点击选择<input type="file" id="fileIn" accept=".xlsx,.xls,.csv" style="display:none"></div>
       <div class="status" id="impStatus"></div>
     </div>
@@ -1189,9 +1189,12 @@ function updateCityMeta(){
 
 /* ============ import engine ============ */
 function computeRaw(r){
-  const F=r.F,I=r.I,J=r.J,K=(r.K!=null?r.K:r.J),L=r.L,M=r.M,N=(r.N!=null?r.N:0.9),P=r.P;
-  let O=r.O;
-  if(O==null){const G=r.G,H=r.H;O=(I!=null&&G!=null&&H!=null&&N!=null)?I*G*H*N:(N!=null&&J!=null?N*J:0);}
+  /* 对齐原始表口径：O=中长期电量为显式列，留空按 0（源表惯例，不推测）；
+     J=日前出清电量留空按 K（源表 J=K 惯例）；O>0 时才要求 F/P 必填 */
+  const L=r.L,M=r.M,K=(r.K!=null?r.K:r.J),J=(r.J!=null?r.J:K);
+  const O=(r.O!=null?r.O:0);
+  if(O>0&&(r.P==null||r.F==null)) throw new Error('中长期电量>0 时必须填写 中长期电价 与 日前统一电价');
+  const F=r.F||0,P=r.P||0;
   const Q=O*(P+L-F),R=(J-O)*L,S=(K-J)*M;
   const U=Q+R+S,V=K*M,W=J*L-K*M;
   return {K,U,V,W,O,Q,R,S};
@@ -1208,7 +1211,7 @@ function parseRaw(rows){
     c.K+=x.K;c.U+=x.U;c.V+=x.V;c.W+=x.W;c.O+=x.O;c.Q+=x.Q;c.R+=x.R;c.S+=x.S;
     if(r.L!=null){c.Ls+=r.L;c.n++;} if(r.M!=null){c.Ms+=r.M;}
     // 逐小时：仅当 时刻 为合法 0–23 整数时按 city+date+hour 入桶，供 24h 节点价格图使用
-    const hh=(r.H!=null && r.H>=0 && r.H<=23 && Number.isInteger(r.H))?r.H:null;
+    const hh=(r.hour!=null && r.hour>=0 && r.hour<=23 && Number.isInteger(r.hour))?r.hour:null;
     if(hh!=null){
       if(!hourly[city]) hourly[city]={};
       if(!hourly[city][d]) hourly[city][d]=new Array(24).fill(null);
@@ -1226,10 +1229,11 @@ function parseRaw(rows){
 }
 const ALIAS={
   F:['日前统一电价','统一电价','日前电价'],
+  G:['月分日','2026月分日计算'], H:['日分时','日分时标准'],
   I:['月发电量'], J:['日前出清电量'], K:['实际发电量'],
   L:['日前节点电价'], M:['实时节点电价'],
   N:['中长期比例'], O:['中长期电量'], P:['中长期电价'],
-  H:['时刻','小时','hour'],
+  hour:['时刻','小时','hour'],
   city:['地市','城市','city','scope'], date:['日期','date','时间']
 };
 function normDate(d){
@@ -1264,10 +1268,9 @@ function rowsFromFile(headers,dataRows){
   const map=mapHeaders(headers);
   if(!map.date) throw new Error('缺少必备列：日期');
   if(!map.L||!map.M) throw new Error('缺少必备列：日前节点电价 / 实时节点电价');
-  if(!map.F||!map.P) throw new Error('缺少必备列：日前统一电价 / 中长期电价');
   return dataRows.map(row=>{
     const g=o=>{const v=row[map[o]];if(v==null||v==='')return null;const n=parseFloat(String(v).replace(/,/g,''));return isNaN(n)?null:n;};
-    return {city:map.city?row[map.city]:null,date:normDate(row[map.date]),F:g('F'),I:g('I'),J:g('J'),K:g('K'),L:g('L'),M:g('M'),N:g('N'),O:g('O'),P:g('P'),H:g('H')};
+    return {city:map.city?row[map.city]:null,date:normDate(row[map.date]),F:g('F'),G:g('G'),H:g('H'),I:g('I'),J:g('J'),K:g('K'),L:g('L'),M:g('M'),N:g('N'),O:g('O'),P:g('P'),hour:g('hour')};
   });
 }
 function doImport(file){
@@ -1380,7 +1383,7 @@ function genTemplate(){
   const st=document.getElementById('tplStatus');
   if(tplSel.size===0){ st.className='status err'; st.textContent='请至少选择一个月份'; return; }
   const year=parseInt(document.getElementById('tplYear').value,10)||2026;
-  const head=['日期','月份','时刻','星期','日期类型','日前统一电价','月发电量','日前出清电量','实际发电量','日前节点电价','实时节点电价','中长期比例','中长期电量','中长期电价','地市'];
+  const head=['日期','月份','时刻','日期类型','星期','日前统一电价','月分日','日分时','月发电量','日前出清电量','实际发电量','日前节点电价','实时节点电价','中长期比例','中长期电量','中长期电价','地市'];
   const WD=['周日','周一','周二','周三','周四','周五','周六'];
   const rows=[];
   [...tplSel].sort((a,b)=>a-b).forEach(m=>{
