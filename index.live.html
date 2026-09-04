@@ -648,7 +648,7 @@ footer b{color:var(--ink-2)}
       <button class="x" id="closeTpl">×</button>
     </div>
     <div class="modal-b">
-      <p>先选择要导入数据的 <b>年份</b>、<b>月份</b> 与 <b>地市</b>（均可多选），系统将为所选月份自动生成每天的 <b>日期 / 月份 / 时刻 / 星期</b>，其余列留空待填。所选每个地市生成一个<b>以其命名的子表</b>，导出 Excel（.xlsx）填写后导入，多子表自动全部识别。</p>
+      <p>先选择要导入数据的 <b>年份</b>、<b>月份</b> 与 <b>地市</b>（均可多选），系统将为所选月份自动生成每天的 <b>日期 / 月份 / 时刻 / 星期</b>，其余列留空待填。系统会按该地市<b>最新月份的日均曲线</b>，为每日上网时段 <b>11–15 时</b> 预填 <b>日前出清电量</b> 与 <b>实际发电量</b>（两列同值，即日前=实际、无偏差；若要体现日前偏差，导出后手工调整「日前出清电量」列即可）。所选每个地市生成一个<b>以其命名的子表</b>，导出 Excel（.xlsx）填写后导入，多子表自动全部识别。</p>
       <div class="inrow">
         <label>数据年份</label>
         <input id="tplYear" type="number" min="2000" max="2100" value="2026" />
@@ -1657,6 +1657,29 @@ function buildTplMonths(){
   });
   tplSel.clear(); syncTplChips();
 }
+/* 上网时段(11–15 时)参考电量曲线：取该地市最新有数据月份的 11–15 时日均值。
+   源数据 hourly 仅存 [L,M,K]，无小时级 J，故 J 与 K 预填同值（即日前=实际，无偏差）；
+   如需体现日前偏差，导出后手工调整「日前出清电量」列即可。 */
+function refKCurve(city){
+  const hc=(typeof HOURLY!=='undefined'?HOURLY:{})[city];
+  if(!hc) return null;
+  const byM={};
+  for(const d in hc){
+    const arr=hc[d]; if(!Array.isArray(arr)) continue;
+    const mo=+String(d).slice(5,7); if(!mo) continue;
+    if(!byM[mo]) byM[mo]={sum:new Array(24).fill(0),n:0};
+    let any=false;
+    for(let h=11;h<=15;h++){
+      const v=arr[h];
+      if(v&&v[2]!=null&&isFinite(+v[2])){ byM[mo].sum[h]+=Math.max(0,+v[2]); any=true; }
+    }
+    if(any) byM[mo].n++;
+  }
+  const months=Object.keys(byM).map(Number).filter(m=>byM[m].n>0).sort((a,b)=>a-b);
+  if(!months.length) return null;
+  const b=byM[months[months.length-1]];
+  return [11,12,13,14,15].map(h=>+(b.sum[h]/b.n).toFixed(3));
+}
 function genTemplate(){
   const st=document.getElementById('tplStatus');
   if(tplSel.size===0){ st.className='status err'; st.textContent='请至少选择一个月份'; return; }
@@ -1667,6 +1690,7 @@ function genTemplate(){
   const wb=XLSX.utils.book_new();
   let totalRows=0;
   [...tplCitySel].sort((a,b)=>a.localeCompare(b,'zh')).forEach(city=>{
+    const kc=refKCurve(city);   // 上网时段 11–15 时参考电量曲线
     const rows=[];
     [...tplSel].sort((a,b)=>a-b).forEach(m=>{
       const dim=new Date(year,m,0).getDate();
@@ -1674,7 +1698,11 @@ function genTemplate(){
         const dt=new Date(year,m-1,d);
         const date=`${year}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         const wd=WD[dt.getDay()];
-        for(let h=0; h<24; h++) rows.push([date,m,h,wd,null,null,null,null,null,null,null,null,null,null,null,null,city]);
+        for(let h=0; h<24; h++){
+          /* 索引 9=日前出清电量, 10=实际发电量；两者同值预填 */
+          const kv=(kc&&h>=11&&h<=15)?kc[h-11]:null;
+          rows.push([date,m,h,wd,null,null,null,null,null,kv,kv,null,null,null,null,null,city]);
+        }
       }
     });
     totalRows+=rows.length;
@@ -1685,7 +1713,7 @@ function genTemplate(){
   const cname=tplCitySel.size===1?[...tplCitySel][0]:tplCitySel.size+'地市';
   XLSX.writeFile(wb,`收益测算_导入模板_${year}_${label}_${cname}.xlsx`);
   tplModal.classList.remove('show');
-  toast(`模板已生成（${tplCitySel.size} 个地市子表 · ${totalRows} 行 · ${tplSel.size} 个月）`);
+  toast(`模板已生成（${tplCitySel.size} 个地市子表 · ${totalRows} 行 · ${tplSel.size} 个月 · 11–15 时电量已预填）`);
 }
 document.getElementById('tplBtn').onclick=()=>{ buildTplMonths(); buildTplCities(); tplModal.classList.add('show'); };
 document.getElementById('closeTpl').onclick=()=>tplModal.classList.remove('show');
