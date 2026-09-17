@@ -209,11 +209,17 @@ select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(-
 .mchip{
   font-family:var(--ff);font-size:13px;font-weight:500;color:var(--ink-2);
   background:var(--surface);border:1px solid var(--border-2);border-radius:10px;
-  padding:7px 13px;cursor:pointer;transition:all .15s var(--ease);
+  padding:9px 13px;min-width:56px;text-align:center;line-height:1.3;
+  cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;
+  transition:background .15s var(--ease),color .15s var(--ease),border-color .15s var(--ease),box-shadow .15s var(--ease),transform .08s var(--ease);
 }
 .mchip:hover{border-color:var(--primary)}
+.mchip:active{transform:scale(.94)}
+.mchip:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .mchip.on{background:var(--primary);color:#fff;border-color:var(--primary);box-shadow:0 5px 13px rgba(14,138,102,.25)}
 .mchip.all.on{background:var(--ink);border-color:var(--ink)}
+.mhint{font-weight:600;color:var(--primary);font-size:12px;margin-left:6px;letter-spacing:0;text-transform:none}
+.mtip{font-weight:400;color:var(--muted);font-size:11px;margin-left:8px;letter-spacing:0;text-transform:none}
 
 /* ---------- capture / hero / layout ---------- */
 #capture{
@@ -520,7 +526,7 @@ footer b{color:var(--ink-2)}
       <select id="citySel" aria-label="选择地市或范围"></select>
     </div>
     <div class="field">
-      <label>月份选择</label>
+      <label>月份选择 <span class="mhint" id="monthHint">全部月份</span> <span class="mtip">点击＝单月 · Shift＝区间 · Ctrl/⌘＝多选</span></label>
       <div class="months" id="months"></div>
     </div>
   </div>
@@ -1364,21 +1370,65 @@ function buildCity(){
   s.value=state.city;
   s.onchange=()=>{state.city=s.value; refresh();};
 }
+let monthAnchor=null;   /* Shift 区间起点（上一次点选的月份） */
+function monthLabel(){
+  const ms=[...state.months].sort((a,b)=>a-b);
+  if(ms.length===MONTHS_ALL.length||!ms.length) return '全部月份';
+  const runs=[]; let s=ms[0],p=ms[0];
+  for(let i=1;i<ms.length;i++){ if(ms[i]===p+1){p=ms[i];} else {runs.push([s,p]); s=p=ms[i];} }
+  runs.push([s,p]);
+  return '已选 '+runs.map(r=>r[0]===r[1]?r[0]+'月':r[0]+'–'+r[1]+'月').join('、');
+}
+function syncMonthChips(){
+  const box=document.getElementById('months'); if(!box) return;
+  const allOn=state.months.size===MONTHS_ALL.length;
+  box.querySelectorAll('.mchip').forEach(x=>{
+    const on = x.dataset.m==='all' ? allOn : state.months.has(+x.dataset.m);
+    x.classList.toggle('on',on); x.setAttribute('aria-pressed',on?'true':'false');
+  });
+  const hint=document.getElementById('monthHint'); if(hint) hint.textContent=monthLabel();
+}
+function applyMonths(next){
+  state.months = (next && next.size) ? next : new Set(MONTHS_ALL);
+  syncMonthChips(); refresh();
+}
 function buildMonths(){
   const box=document.getElementById('months');
-  let h=`<div class="mchip all on" data-m="all">全部</div>`;
-  MONTHS_ALL.forEach(m=>h+=`<div class="mchip on" data-m="${m}">${m}月</div>`);
-  box.innerHTML=h;
-  box.querySelectorAll('.mchip').forEach(ch=>ch.onclick=()=>{
+  box.setAttribute('role','group');
+  box.setAttribute('aria-label','月份选择：点击＝只看该月，Shift+点击＝选区间，Ctrl/⌘+点击＝多选，再点已选中的月＝回到全部');
+  box.title='点击＝只看该月 · Shift+点击＝选区间 · Ctrl/⌘+点击＝多选 · 再点已选中的月＝回到全部';
+  box.innerHTML=`<div class="mchip all" data-m="all" role="button" tabindex="0" aria-pressed="true">全部</div>`
+    + MONTHS_ALL.map(m=>`<div class="mchip" data-m="${m}" role="button" tabindex="0" aria-pressed="true">${m}月</div>`).join('');
+  const chips=[...box.querySelectorAll('.mchip')];
+  const pick=(ch,ev)=>{
     const m=ch.dataset.m;
-    if(m==='all'){ state.months = ch.classList.contains('on')? new Set() : new Set(MONTHS_ALL); }
-    else { const mv=+m; if(state.months.has(mv))state.months.delete(mv); else state.months.add(mv); }
-    const allOn=state.months.size===MONTHS_ALL.length;
-    box.querySelector('.mchip.all').classList.toggle('on',allOn);
-    box.querySelectorAll('.mchip[data-m]:not(.all)').forEach(x=>x.classList.toggle('on',state.months.has(+x.dataset.m)));
-    if(state.months.size===0){state.months=new Set(MONTHS_ALL);toast('至少选择一个月');return;}
-    refresh();
+    if(m==='all'){ monthAnchor=null; applyMonths(new Set(MONTHS_ALL)); return; }
+    const mv=+m;
+    if(ev.shiftKey && monthAnchor!=null){
+      const a=Math.min(monthAnchor,mv), b=Math.max(monthAnchor,mv), nx=new Set();
+      for(let i=a;i<=b;i++) if(MONTHS_ALL.includes(i)) nx.add(i);
+      applyMonths(nx); return;
+    }
+    if(ev.ctrlKey||ev.metaKey){
+      const nx=new Set(state.months);
+      if(nx.has(mv)) nx.delete(mv); else nx.add(mv);
+      monthAnchor=mv; applyMonths(nx); return;
+    }
+    if(state.months.size===1 && state.months.has(mv)){ monthAnchor=null; applyMonths(new Set(MONTHS_ALL)); return; }
+    monthAnchor=mv; applyMonths(new Set([mv]));
+  };
+  chips.forEach((ch,i)=>{
+    ch.onclick=ev=>pick(ch,ev);
+    ch.onkeydown=ev=>{
+      if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); pick(ch,ev); }
+      else if(ev.key==='ArrowRight'||ev.key==='ArrowLeft'){
+        ev.preventDefault();
+        const j=(i+(ev.key==='ArrowRight'?1:chips.length-1))%chips.length;
+        chips[j].focus();
+      }
+    };
   });
+  syncMonthChips();
 }
 function buildCityMonth(){
   const sel=document.getElementById('cityMonthSel');
